@@ -20,6 +20,7 @@ from .core import (
     Settings,
     HistoryStore,
     KeyCombo,
+    InvalidKeyCombo,
     Translator,
     TranslationError,
     language_name,
@@ -332,12 +333,21 @@ class QTranslateMacApp(rumps.App):
         self.popup = PopupPanel()
         self.hotkeys = HotkeyMonitor()
 
+        self.popup_hotkey_item = rumps.MenuItem(
+            self._popup_hotkey_title(), callback=self.show_popup_hotkey_settings
+        )
+        self.replace_hotkey_item = rumps.MenuItem(
+            self._replace_hotkey_title(), callback=self.show_replace_hotkey_settings
+        )
+
         self.menu = [
             rumps.MenuItem("Перевести выделенный текст", callback=self.translate_selection),
             rumps.MenuItem("Заменить выделенное переводом", callback=self.replace_selection),
             None,
             rumps.MenuItem("История переводов", callback=self.show_history),
             rumps.MenuItem("Настройки…", callback=self.show_settings),
+            self.popup_hotkey_item,
+            self.replace_hotkey_item,
             None,
             rumps.MenuItem("Проверить доступ (Accessibility)", callback=self.check_accessibility),
         ]
@@ -425,6 +435,80 @@ class QTranslateMacApp(rumps.App):
                 self.settings.source_language = src
                 self.settings.target_language = tgt
                 self.settings.save(default_settings_path())
+
+    # -- hotkey configuration --------------------------------------------
+    def _popup_hotkey_title(self) -> str:
+        return f"Хоткей перевода: {KeyCombo.parse(self.settings.popup_hotkey).display()}"
+
+    def _replace_hotkey_title(self) -> str:
+        return f"Хоткей замены: {KeyCombo.parse(self.settings.replace_hotkey).display()}"
+
+    def _update_hotkey_menu_titles(self) -> None:
+        self.popup_hotkey_item.title = self._popup_hotkey_title()
+        self.replace_hotkey_item.title = self._replace_hotkey_title()
+
+    def show_popup_hotkey_settings(self, _sender) -> None:
+        self._configure_hotkey(
+            prompt_title="Хоткей: показать перевод во всплывающем окне",
+            current=self.settings.popup_hotkey,
+            identifier="popup",
+            action=self._on_popup_hotkey,
+            store=lambda combo: setattr(self.settings, "popup_hotkey", combo.to_string()),
+        )
+
+    def show_replace_hotkey_settings(self, _sender) -> None:
+        self._configure_hotkey(
+            prompt_title="Хоткей: заменить выделенное переводом",
+            current=self.settings.replace_hotkey,
+            identifier="replace",
+            action=self._on_replace_hotkey,
+            store=lambda combo: setattr(self.settings, "replace_hotkey", combo.to_string()),
+        )
+
+    def _configure_hotkey(
+        self,
+        prompt_title: str,
+        current: str,
+        identifier: str,
+        action: Callable[[], None],
+        store: Callable[[KeyCombo], None],
+    ) -> None:
+        window = rumps.Window(
+            title=prompt_title,
+            message=(
+                "Формат: модификаторы через «+» и одна буква/цифра в конце.\n"
+                "Модификаторы: ctrl, alt, shift, cmd. Например: cmd+alt+t"
+            ),
+            default_text=current,
+            ok="Сохранить",
+            cancel="Отмена",
+        )
+        response = window.run()
+        if not response.clicked:
+            return
+        try:
+            combo = KeyCombo.parse(response.text)
+        except InvalidKeyCombo as exc:
+            rumps.alert("Некорректная комбинация", str(exc))
+            return
+
+        # Conflict check: two hotkeys pointing at the same combo would mean
+        # only one of them ever fires (HotkeyMonitor dispatches to the first
+        # match), so refuse instead of silently shadowing the other action.
+        other_value = self.settings.replace_hotkey if identifier == "popup" else self.settings.popup_hotkey
+        if combo.to_string() == KeyCombo.parse(other_value).to_string():
+            rumps.alert(
+                "Комбинация уже занята",
+                f"{combo.display()} уже используется другим действием. Выберите другую.",
+            )
+            return
+
+        store(combo)
+        self.settings.save(default_settings_path())
+        self.hotkeys.unregister(identifier)
+        self.hotkeys.register(identifier, combo, action)
+        self._update_hotkey_menu_titles()
+        rumps.alert("Готово", f"Новый хоткей: {combo.display()}")
 
     def check_accessibility(self, _sender) -> None:
         trusted = HotkeyMonitor.is_accessibility_trusted()
