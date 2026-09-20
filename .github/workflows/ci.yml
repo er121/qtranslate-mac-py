@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  core-tests-linux:
+    name: Core logic tests (Linux, incl. real translation call)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install cross-platform dependency
+        run: pip install deep-translator
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+  macos-smoke:
+    name: macOS build + import smoke test (real macOS runner)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Report runner details
+        run: |
+          sw_vers
+          python3 --version
+          uname -m
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run core unit tests on macOS too
+        run: python -m unittest discover -s tests -v
+      - name: Import and construct the macOS app (no run loop, no Accessibility needed)
+        run: python scripts/macos_smoke_test.py
