@@ -1,0 +1,11 @@
+# Cross-platform: the pure translation/history/settings logic in
+# qtranslate_mac.core needs only this.
+deep-translator>=1.11.4
+
+# macOS-only: the menu-bar app itself (qtranslate_mac.macapp).
+# Markers mean `pip install -r requirements.txt` is a no-op for these on
+# Linux/Windows, so the same file works for both CI jobs.
+pyobjc-framework-Cocoa>=10.3; sys_platform == "darwin"
+pyobjc-framework-Quartz>=10.3; sys_platform == "darwin"
+pyobjc-framework-ApplicationServices>=10.3; sys_platform == "darwin"
+rumps>=0.4.0; sys_platform == "darwin"
