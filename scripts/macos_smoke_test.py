@@ -11,6 +11,13 @@ when a person presses it, or that copy/paste grabs a real selection in some
 other app — that requires a human, see INSTALL.md.
 """
 import sys
+from pathlib import Path
+
+# Run as `python scripts/macos_smoke_test.py` from the repo root: Python puts
+# only this script's own directory (scripts/) on sys.path, not the repo
+# root, so the qtranslate_mac package next to it wouldn't be importable
+# without this — same fix tests/test_core.py already needed.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 print(f"Python: {sys.version}")
 print(f"Platform: {sys.platform}")
