@@ -1,0 +1,51 @@
+name: Build macOS installer
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    name: Build .app + .dmg and smoke-launch the real binary (macOS runner)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install py2app
+
+      - name: Build .app bundle
+        run: python setup.py py2app
+
+      - name: Verify the built app actually launches (real binary, real macOS)
+        run: |
+          "dist/QTranslateMac.app/Contents/MacOS/QTranslateMac" &
+          APP_PID=$!
+          sleep 5
+          if kill -0 "$APP_PID" 2>/dev/null; then
+            echo "App is still running after 5s -> looks healthy. Stopping it."
+            kill "$APP_PID"
+          else
+            echo "App exited on its own within 5s -> build is broken."
+            wait "$APP_PID"
+            exit 1
+          fi
+
+      - name: Package as a drag-to-Applications .dmg
+        run: |
+          mkdir dmg_root
+          cp -R "dist/QTranslateMac.app" dmg_root/
+          ln -s /Applications dmg_root/Applications
+          hdiutil create -volname "QTranslateMac" -srcfolder dmg_root -ov -format UDZO QTranslateMac.dmg
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: QTranslateMac-installer
+          path: QTranslateMac.dmg
